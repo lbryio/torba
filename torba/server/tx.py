@@ -28,7 +28,11 @@
 '''Transaction-related classes and functions.'''
 
 from collections import namedtuple
+from io import BytesIO
+from typing import Tuple, List
 
+from torba.client.bcd_data_stream import BCDataStream
+from torba.coin.bitcoincash import Transaction
 from torba.server.hash import sha256, double_sha256, hash_to_hex_str
 from torba.server.script import OpCodes
 from torba.server.util import (
@@ -84,6 +88,58 @@ class TxOutput(namedtuple("TxOutput", "value pk_script")):
             pack_varbytes(self.pk_script),
         ))
 
+
+class BlockDeserializer(BCDataStream):
+    # TODO: this replaces the parser to use torba.client, more work is needed on tx attributes
+    TX_CLASS = Transaction
+
+    def __init__(self, binary, start=0):
+        super().__init__(data=binary)
+        self.binary_length = len(binary)
+        self.data.seek(start)
+
+    def read_tx(self) -> Transaction:
+        '''Return a deserialized transaction.'''
+        raw_tx = BytesIO()  # version: 4 bytes
+        raw_tx.write(self.read(4))
+        def __get_size_and_write():
+            offset = self.data.tell()
+            size: int = self.read_compact_size()
+            read_size = self.data.tell() - offset
+            raw_tx.write(size.to_bytes(read_size, 'little'))
+            return size
+        for _ in range(__get_size_and_write()):
+            # input size: 32 previous hash, 4 idx, variable script, 4 sequence
+            raw_tx.write(self.read(32))
+            raw_tx.write(self.read(4))
+            raw_tx.write(self.read(__get_size_and_write() + 4))
+        for _ in range(__get_size_and_write()):
+            # output size: 8 value, variable script
+            raw_tx.write(self.read(8))
+            raw_tx.write(self.read(__get_size_and_write()))
+        # locktime: 4
+        raw_tx.write(self.read(4))
+
+        return self.TX_CLASS(raw_tx.getvalue())
+
+    def read_tx_and_hash(self) -> Tuple[Transaction, bytes]:
+        '''Return a (deserialized TX, tx_hash) pair.
+
+        The hash needs to be reversed for human display; for efficiency
+        we process it in the natural serialized order.
+        '''
+        tx = self.read_tx()
+        return tx, tx.hash
+
+    def read_tx_and_vsize(self) -> Tuple[Transaction, int]:
+        '''Return a (deserialized TX, vsize) pair.'''
+        return self.read_tx(), self.binary_length
+
+    def read_tx_block(self) -> List[Tuple[Transaction, bytes]]:
+        '''Returns a list of (deserialized_tx, tx_hash) pairs.'''
+        read = self.read_tx_and_hash
+        # Some coins have excess data beyond the end of the transactions
+        return [read() for _ in range(self.read_compact_size())]
 
 class Deserializer:
     '''Deserializes blocks into transactions.
