@@ -1,5 +1,6 @@
 import logging
 import asyncio
+from io import StringIO
 from asyncio import wrap_future
 from concurrent.futures.thread import ThreadPoolExecutor
 
@@ -99,6 +100,8 @@ def constraints_to_sql(constraints, joiner=' AND ', prepend_key=''):
             col, op = col[:-len('__lte')], '<='
         elif key.endswith('__gt'):
             col, op = col[:-len('__gt')], '>'
+        elif key.endswith('__gte'):
+            col, op = col[:-len('__gte')], '>='
         elif key.endswith('__like'):
             col, op = col[:-len('__like')], 'LIKE'
         elif key.endswith('__not_like'):
@@ -217,6 +220,11 @@ class SQLiteMixin:
             table, ', '.join(columns), where
         )
         return sql, values
+
+    async def _delete_sql(self, table: str, **constraints):
+        await self.db.execute(
+            *query("DELETE FROM {}".format(table), **constraints)
+        )
 
 
 class BaseDatabase(SQLiteMixin):
@@ -350,11 +358,27 @@ class BaseDatabase(SQLiteMixin):
     async def release_outputs(self, txos):
         await self.reserve_outputs(txos, is_reserved=False)
 
-    async def rewind_blockchain(self, above_height):  # pylint: disable=no-self-use
-        # TODO:
+    async def rewind_blockchain(self, above_height: int):
         # 1. delete transactions above_height
+        txs = await self.select_transactions(
+            'txid, raw', None, {'height__gte': above_height}
+        )
+        if not txs or len(txs) == 0:
+            return
+        await self._delete_sql('tx', {'height__gte': above_height})
         # 2. update address histories removing deleted TXs
-        return True
+        for tx in txs:
+            txid = tx[0]
+            rows = await self.select_txos('address, history', {'txid__like': txid})
+            for row in rows:
+                resultIO = StringIO()
+                hist = row[1].split(':')
+                for x in range(0, len(hist), 2):
+                    if txid != hist[x] and above_height > int(hist[x+1]):
+                        resultIO.write(hist[x] + ':' + hist[x+1] + ':')
+                await self.set_address_history(row[0], resultIO.getvalue())
+            await self._delete_sql('txo', {'txid__like': txid})
+            await self._delete_sql('txi', {'txid__like': txid})
 
     async def select_transactions(self, cols, account=None, **constraints):
         if 'txid' not in constraints and account is not None:
