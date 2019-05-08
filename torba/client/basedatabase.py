@@ -1,9 +1,9 @@
 import logging
 import asyncio
-from io import StringIO
 from asyncio import wrap_future
 from concurrent.futures.thread import ThreadPoolExecutor
 
+from io import StringIO
 from typing import Tuple, List, Union, Callable, Any, Awaitable, Iterable
 
 import sqlite3
@@ -361,24 +361,24 @@ class BaseDatabase(SQLiteMixin):
     async def rewind_blockchain(self, above_height: int):
         # 1. delete transactions above_height
         txs = await self.select_transactions(
-            'txid, raw', None, {'height__gte': above_height}
+            'txid, raw', None, **{'height__gte': above_height}
         )
-        if not txs or len(txs) == 0:
+        if not txs:
             return
-        await self._delete_sql('tx', {'height__gte': above_height})
+        await self._delete_sql('tx', **{'height__gte': above_height})
         # 2. update address histories removing deleted TXs
         for tx in txs:
             txid = tx[0]
-            rows = await self.select_txos('address, history', {'txid__like': txid})
+            rows = await self.select_txos('address, history', **{'txid__like': txid})
             for row in rows:
-                resultIO = StringIO()
+                result = StringIO()
                 hist = row[1].split(':')
                 for x in range(0, len(hist), 2):
                     if txid != hist[x] and above_height > int(hist[x+1]):
-                        resultIO.write(hist[x] + ':' + hist[x+1] + ':')
-                await self.set_address_history(row[0], resultIO.getvalue())
-            await self._delete_sql('txo', {'txid__like': txid})
-            await self._delete_sql('txi', {'txid__like': txid})
+                        result.write(hist[x] + ':' + hist[x+1] + ':')
+                await self.set_address_history(row[0], result.getvalue())
+            await self._delete_sql('txo', **{'txid__like': txid})
+            await self._delete_sql('txi', **{'txid__like': txid})
 
     async def select_transactions(self, cols, account=None, **constraints):
         if 'txid' not in constraints and account is not None:
