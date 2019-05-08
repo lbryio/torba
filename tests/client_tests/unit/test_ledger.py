@@ -121,8 +121,14 @@ class TestSynchronization(LedgerTestCase):
         )
 
 
-class MocHeaderNetwork:
+class MocHeaderNetwork(MockNetwork):
     def __init__(self, responses):
+        history = transaction = ''
+        if 'history' in responses:
+            history = responses['history']
+        if 'transaction' in responses:
+            transaction = responses['transaction']
+        MockNetwork.__init__(self, history, transaction)
         self.responses = responses
 
     async def get_headers(self, height, blocks):
@@ -145,6 +151,53 @@ class BlockchainReorganizationTests(LedgerTestCase):
         await self.ledger.receive_header([{
             'height': 21, 'hex': hexlify(self.make_header(block_height=21))
         }])
+
+    async def test_2_block_reorganization(self):
+        account = self.ledger.account_class.generate(self.ledger, Wallet(), "torba")
+        address = await account.receiving.get_or_create_usable_address()
+        address_details = await self.ledger.db.get_address(address=address)
+        self.assertEqual(address_details['history'], None)
+
+        self.ledger.network = MocHeaderNetwork({
+            20: {'height': 20, 'count': 5, 'hex': hexlify(
+                self.get_bytes(after=block_bytes(20), upto=block_bytes(5)),
+            )},
+            25: {'height': 25, 'count': 0, 'hex': b''},
+            'history': [
+                {'tx_hash': 'abcd01', 'height': 20},
+                {'tx_hash': 'abcd02', 'height': 25},
+            ],
+            'transaction': {
+                'abcd01': hexlify(get_transaction(get_output(1)).raw),
+                'abcd02': hexlify(get_transaction(get_output(2)).raw),
+            }
+        })
+        headers = self.ledger.headers
+        await headers.connect(0, self.get_bytes(upto=block_bytes(20)))
+        self.add_header(block_height=len(headers))
+        self.assertEqual(headers.height, 20)
+        await self.ledger.update_history(address, '')
+        txs_details = await self.ledger.db.get_transactions(account)
+        self.assertEqual(len(txs_details), 2)
+        self.assertEqual(txs_details[0].id, get_transaction(get_output(2)).id)
+        self.assertEqual(txs_details[1].id, get_transaction(get_output(1)).id)
+        address_details = await self.ledger.db.get_address(address=address)
+        self.assertEqual(
+            address_details['history'],
+            '252bda9b22cc902ca2aa2de3548ee8baf06b8501ff7bfb3b0b7d980dbd1bf792:20:'
+            'ab9c0654dd484ac20437030f2034e25dcb29fc507e84b91138f80adc3af738f9:25:'
+        )
+        await self.ledger.receive_header([{
+            'height': 21, 'hex': hexlify(self.make_header(block_height=21))
+        }])
+        txs_details = await self.ledger.db.get_transactions(account)
+        self.assertEqual(len(txs_details), 1)
+        self.assertEqual(txs_details[0].id, get_transaction(get_output(2)).id)
+        address_details = await self.ledger.db.get_address(address=address)
+        self.assertEqual(
+            address_details['history'],
+            '252bda9b22cc902ca2aa2de3548ee8baf06b8501ff7bfb3b0b7d980dbd1bf792:20:'
+        )
 
     async def test_3_block_reorganization(self):
         self.ledger.network = MocHeaderNetwork({
