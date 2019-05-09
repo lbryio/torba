@@ -187,12 +187,10 @@ class BlockchainReorganizationTests(LedgerTestCase):
             '252bda9b22cc902ca2aa2de3548ee8baf06b8501ff7bfb3b0b7d980dbd1bf792:20:'
             'ab9c0654dd484ac20437030f2034e25dcb29fc507e84b91138f80adc3af738f9:25:'
         )
-        await self.ledger.receive_header([{
-            'height': 21, 'hex': hexlify(self.make_header(block_height=21))
-        }])
+        await self.ledger.db.rewind_blockchain(21)
         txs_details = await self.ledger.db.get_transactions(account)
         self.assertEqual(len(txs_details), 1)
-        self.assertEqual(txs_details[0].id, get_transaction(get_output(2)).id)
+        self.assertEqual(txs_details[0].id, get_transaction(get_output(1)).id)
         address_details = await self.ledger.db.get_address(address=address)
         self.assertEqual(
             address_details['history'],

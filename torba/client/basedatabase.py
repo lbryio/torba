@@ -367,15 +367,17 @@ class BaseDatabase(SQLiteMixin):
             return
         await self._delete_sql('tx', **{'height__gte': above_height})
         # 2. update address histories removing deleted TXs
+        addrhis = await self.select_addresses('address, history')
         for tx in txs:
             txid = tx[0]
-            rows = await self.select_txos('address, history', **{'txid__like': txid})
-            for row in rows:
+            for row in addrhis:
+                if not row[1] or txid not in row[1]:
+                    continue
                 result = StringIO()
-                hist = row[1].split(':')
+                hist = row[1].split(':')[:-1]
                 for x in range(0, len(hist), 2):
                     if txid != hist[x] and above_height > int(hist[x+1]):
-                        result.write(hist[x] + ':' + hist[x+1] + ':')
+                        result.write(f'{hist[x]}:{hist[x+1]}:')
                 await self.set_address_history(row[0], result.getvalue())
             await self._delete_sql('txo', **{'txid__like': txid})
             await self._delete_sql('txi', **{'txid__like': txid})
