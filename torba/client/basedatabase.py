@@ -361,16 +361,16 @@ class BaseDatabase(SQLiteMixin):
     async def rewind_blockchain(self, above_height: int):
         # 1. delete transactions above_height
         txs = await self.select_transactions(
-            'txid, raw', None, **{'height__gte': above_height}
+            'txid, raw', height__gte=above_height
         )
         if not txs:
             return
-        await self._delete_sql('tx', **{'height__gte': above_height})
+        await self._delete_sql('tx', height__gte=above_height)
         # 2. update address histories removing deleted TXs
-        addrhis = await self.select_addresses('address, history')
+        address_history = await self.select_addresses('address, history')
         for tx in txs:
             txid = tx[0]
-            for row in addrhis:
+            for row in address_history:
                 if not row[1] or txid not in row[1]:
                     continue
                 result = StringIO()
@@ -379,8 +379,8 @@ class BaseDatabase(SQLiteMixin):
                     if txid != hist[x] and above_height > int(hist[x+1]):
                         result.write(f'{hist[x]}:{hist[x+1]}:')
                 await self.set_address_history(row[0], result.getvalue())
-            await self._delete_sql('txo', **{'txid__like': txid})
-            await self._delete_sql('txi', **{'txid__like': txid})
+            await self._delete_sql('txo', txid__like=txid)
+            await self._delete_sql('txi', txid__like=txid)
 
     async def select_transactions(self, cols, account=None, **constraints):
         if 'txid' not in constraints and account is not None:

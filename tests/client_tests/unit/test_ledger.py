@@ -123,12 +123,8 @@ class TestSynchronization(LedgerTestCase):
 
 class MocHeaderNetwork(MockNetwork):
     def __init__(self, responses):
-        history = transaction = ''
-        if 'history' in responses:
-            history = responses['history']
-        if 'transaction' in responses:
-            transaction = responses['transaction']
-        MockNetwork.__init__(self, history, transaction)
+        super().__init__(responses.get('history', ''),
+                         responses.get('transaction', ''))
         self.responses = responses
 
     async def get_headers(self, height, blocks):
