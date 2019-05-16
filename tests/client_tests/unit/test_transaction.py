@@ -350,4 +350,4 @@ class TestTransactionPerformance(AsyncioTestCase, BenchmarkTestCaseMixin):
 
     def test_huge_tx_parsing_performance(self):
         raw = get_transaction().add_outputs([get_output(10)] * 8000).raw
-        self.assertPerformance(lambda: ledger_class.transaction_class(raw), 0.01737410041522886)
+        self.assertPerformance(lambda: ledger_class.transaction_class(raw), .019334138836711645)

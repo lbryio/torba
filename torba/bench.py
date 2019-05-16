@@ -27,13 +27,19 @@ def kolakoski():
 
 class BenchmarkTestCaseMixin(TestCase):
     __kolakoski_ratio = None
-    __kolakoski_base = 0.0015350378746379041
+    __kolakoski_base = 0.0014849151484668255
 
     def do_bench(self, what, base_ratio_case=False):
         timer = timeit.Timer(what)
-        data = timer.repeat(200 if base_ratio_case else timer.autorange()[0], number=1)
+        data = []
+        repetitions = 200 if base_ratio_case else None
+        data.extend(
+            timer.repeat(
+                repetitions or timer.autorange(lambda _, time_taken: data.append(time_taken))[0],
+                number=1)
+        )
 
-        final = confidence(data, 3.291)
+        final = min(data)
         if base_ratio_case:
             self.__kolakoski_ratio = self.__kolakoski_base/final
         else:
@@ -42,5 +48,10 @@ class BenchmarkTestCaseMixin(TestCase):
     def assertPerformance(self, what, expected_time: float, error_rate=0.1):  # pylint: disable=C0103
         if self.__kolakoski_ratio is None:
             self.do_bench(kolakoski, base_ratio_case=True)
-            self.do_bench(kolakoski, base_ratio_case=True)
-        return self.assertAlmostEqual(self.do_bench(what), expected_time, delta=error_rate*expected_time)
+        delta = error_rate*expected_time
+        time_taken = None
+        for _ in range(2):
+            time_taken = self.do_bench(what)
+            if (expected_time - delta) <= time_taken <= (expected_time + delta):
+                return
+        self.fail(f"Test took {time_taken} instead of {expected_time} with an error rate of {error_rate}")
