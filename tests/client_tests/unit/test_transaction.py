@@ -2,6 +2,7 @@ import unittest
 from binascii import hexlify, unhexlify
 from itertools import cycle
 
+from torba.bench import BenchmarkTestCaseMixin
 from torba.testcase import AsyncioTestCase
 
 from torba.coin.bitcoinsegwit import MainNetLedger as ledger_class
@@ -343,3 +344,10 @@ class TransactionIOBalancing(AsyncioTestCase):
         self.assertEqual([0.01, 1], self.inputs(tx))
         # change is now needed to consume extra input
         self.assertEqual([0.97], self.outputs(tx))
+
+
+class TestTransactionPerformance(AsyncioTestCase, BenchmarkTestCaseMixin):
+
+    def test_huge_tx_parsing_performance(self):
+        raw = get_transaction().add_outputs([get_output(10)] * 8000).raw
+        self.assertPerformance(lambda: ledger_class.transaction_class(raw), 0.01737410041522886)
