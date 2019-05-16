@@ -3,24 +3,24 @@ import timeit
 from unittest import TestCase
 
 
-def confidence(times, z, plus_err=True):
+def confidence(times, z_factor, plus_err=True):
     mean = statistics.mean(times)
     standard_dev = statistics.stdev(times)
-    err = (z * standard_dev) / (len(times) ** 0.5)
+    err = (z_factor * standard_dev) / (len(times) ** 0.5)
     return (mean + err) if plus_err else (mean - err)
 
 
 def kolakoski():
-    def get_sequence(r):
-        a = [1, 2, 2]
-        for i in range(3, r - 2):
+    def get_sequence(size):
+        current_values = [1, 2, 2]
+        for i in range(3, size - 2):
             if i % 2 == 1:
-                a.extend([1] * a[i - 1])
+                current_values.extend([1] * current_values[i - 1])
             else:
-                a.extend([2] * a[i - 1])
-            if len(a) >= r:
+                current_values.extend([2] * current_values[i - 1])
+            if len(current_values) >= size:
                 break
-        return a[:r]
+        return current_values[:size]
     sequence = get_sequence(10000)
     assert sequence.count(1), sequence.count(2) == (502, 498)
 
@@ -39,7 +39,7 @@ class BenchmarkTestCaseMixin(TestCase):
         else:
             return final * self.__kolakoski_ratio
 
-    def assertPerformance(self, what, expected_time: float, error_rate=0.1):
+    def assertPerformance(self, what, expected_time: float, error_rate=0.1):  # pylint: disable=C0103
         if self.__kolakoski_ratio is None:
             self.do_bench(kolakoski, base_ratio_case=True)
         return self.assertAlmostEqual(self.do_bench(what), expected_time, delta=error_rate*expected_time)
