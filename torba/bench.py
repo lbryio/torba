@@ -42,4 +42,5 @@ class BenchmarkTestCaseMixin(TestCase):
     def assertPerformance(self, what, expected_time: float, error_rate=0.1):  # pylint: disable=C0103
         if self.__kolakoski_ratio is None:
             self.do_bench(kolakoski, base_ratio_case=True)
+            self.do_bench(kolakoski, base_ratio_case=True)
         return self.assertAlmostEqual(self.do_bench(what), expected_time, delta=error_rate*expected_time)
