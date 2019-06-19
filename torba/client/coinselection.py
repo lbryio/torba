@@ -26,13 +26,13 @@ class CoinSelector:
         if seed is not None:
             self.random.seed(seed, version=1)
 
-    def select(self, strategy: str = None) -> List[basetransaction.BaseOutputEffectiveAmountEstimator]:
+    def select(self, coin_strategy: str = None) -> List[basetransaction.BaseOutputEffectiveAmountEstimator]:
         if not self.txos:
             return []
         if self.target > self.available:
             return []
-        if strategy is not None:
-            return getattr(self, strategy)()
+        if coin_strategy is not None:
+            return getattr(self, coin_strategy)()
         return (
             self.branch_and_bound() or
             self.closest_match() or
@@ -40,13 +40,13 @@ class CoinSelector:
         )
 
     @strategy
-    def confirmed_only(self) -> List[basetransaction.BaseOutputEffectiveAmountEstimator]:
-        self.txos = [t for t in self.txos if t.txo.tx_ref.height > 0] or self.txos
+    def prefer_confirmed(self) -> List[basetransaction.BaseOutputEffectiveAmountEstimator]:
+        self.txos = [t for t in self.txos if t.txo.tx_ref and t.txo.tx_ref.height > 0] or self.txos
         self.available = sum(c.effective_amount for c in self.txos)
         return (
-                self.branch_and_bound() or
-                self.closest_match() or
-                self.random_draw()
+            self.branch_and_bound() or
+            self.closest_match() or
+            self.random_draw()
         )
 
     @strategy
