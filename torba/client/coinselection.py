@@ -41,7 +41,17 @@ class CoinSelector:
 
     @strategy
     def prefer_confirmed(self) -> List[basetransaction.BaseOutputEffectiveAmountEstimator]:
+        original = self.txos
         self.txos = [t for t in self.txos if t.txo.tx_ref and t.txo.tx_ref.height > 0] or self.txos
+        self.available = sum(c.effective_amount for c in self.txos)
+        confirmed = (
+            self.branch_and_bound() or
+            self.closest_match() or
+            self.random_draw()
+        )
+        if confirmed:
+            return confirmed
+        self.txos = original
         self.available = sum(c.effective_amount for c in self.txos)
         return (
             self.branch_and_bound() or
