@@ -75,26 +75,49 @@ class BaseNetwork:
         }
 
     async def pick_fastest_server(self, timeout):
+        connections = asyncio.Queue()
+
         async def __probe(server):
             client = ClientSession(network=self, server=server)
             try:
                 await client.create_connection(timeout)
+            except Exception as err:
+                if isinstance(err, asyncio.CancelledError):
+                    raise
+                log.debug("failed to connect to wallet server %s:%d: %s", server[0], server[1], str(err))
+                return
+            try:
                 await client.send_request('server.banner')
-                return client
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+                connections.put_nowait(client)
+                return
+            except asyncio.TimeoutError:
+                if not client.is_closing():
+                    client.abort()
+            except asyncio.CancelledError:
                 if not client.is_closing():
                     client.abort()
                 raise
             except Exception:  # pylint: disable=broad-except
-                log.exception("Connecting to %s:%d raised an exception:", *server)
-        futures = []
-        for server in self.config['default_servers']:
-            futures.append(__probe(server))
-        done, pending = await asyncio.wait(futures, return_when='FIRST_COMPLETED')
-        for task in pending:
-            task.cancel()
-        for client in done:
-            return await client
+                log.exception("Sending request to %s:%d raised an exception:", *server)
+
+        while True:
+            task = asyncio.create_task(
+                asyncio.wait(
+                    [asyncio.create_task(__probe(server)) for server in self.config['default_servers']]
+                )
+            )
+            connected = asyncio.create_task(connections.get())
+            await asyncio.wait([task, connected], return_when='FIRST_COMPLETED')
+            if connected.done():
+                task.cancel()
+                return connected.result()
+            else:
+                log.warning("failed to connect to any wallet servers, retrying in 30 seconds")
+                if not connected.done():
+                    connected.cancel()
+                if not task.done():
+                    task.cancel()
+                await asyncio.sleep(30)
 
     async def start(self):
         self.running = True

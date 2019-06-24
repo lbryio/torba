@@ -9,7 +9,7 @@ jobs:
     - stage: code quality
       name: "pylint & mypy"
       install:
-        - pip install pylint mypy
+        - pip install pylint mypy==0.701
         - pip install -e .
       script:
         - pylint --rcfile=setup.cfg torba
