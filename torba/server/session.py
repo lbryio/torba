@@ -7,6 +7,7 @@
 
 """Classes for local RPC server and remote client TCP/SSL servers."""
 
+import collections
 import asyncio
 import codecs
 import datetime
@@ -278,6 +279,10 @@ class SessionManager:
     def _get_info(self):
         """A summary of server state."""
         group_map = self._group_map()
+        method_counts = collections.defaultdict(0)
+        for s in self.sessions:
+            for request, _ in s.connection._requests.values():
+                method_counts[request.method] += 1
         return {
             'closing': len([s for s in self.sessions if s.is_closing()]),
             'daemon': self.daemon.logged_url(),
@@ -286,10 +291,11 @@ class SessionManager:
             'errors': sum(s.errors for s in self.sessions),
             'groups': len(group_map),
             'logged': len([s for s in self.sessions if s.log_me]),
-            'paused': sum(not s.can_send.is_set() for s in self.sessions),
+            'paused': sum(not s._can_send.is_set() for s in self.sessions),
             'pid': os.getpid(),
             'peers': self.peer_mgr.info(),
             'requests': sum(s.count_pending_items() for s in self.sessions),
+            'method_counts': method_counts,
             'sessions': self.session_count(),
             'subs': self._sub_count(),
             'txs_sent': self.txs_sent,
